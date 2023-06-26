@@ -331,7 +331,7 @@ class CookieStore(commands.Cog):
         embed = discord.Embed(
             colour=await ctx.embed_colour(), timestamp=datetime.datetime.now()
         )
-        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon_url)
+        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
         embed.title = "**__Cookie Store settings:__**"
         embed.set_footer(text="*required to function properly")
 
@@ -568,7 +568,7 @@ class CookieStore(commands.Cog):
         )
         embed.set_author(
             name=f"{ctx.author.display_name}'s inventory",
-            icon_url=ctx.author.avatar_url,
+            icon_url=ctx.author.avatar,
         )
 
         await ctx.send(embed=embed)
@@ -657,7 +657,7 @@ class CookieStore(commands.Cog):
             )
             embed.set_author(
                 name=f"{ctx.guild.name}'s cookie store",
-                icon_url=ctx.guild.icon_url,
+                icon_url=ctx.guild.icon,
             )
             page_list.append(embed)
         return page_list

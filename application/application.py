@@ -6,6 +6,7 @@ from discord.utils import get
 
 from redbot.core import Config, checks, commands
 from redbot.core.utils.predicates import MessagePredicate
+from redbot.core.utils.chat_formatting import humanize_list
 
 from redbot.core.bot import Red
 
@@ -15,7 +16,7 @@ class Application(commands.Cog):
     Receive and moderate staff applications with customizable questions.
     """
 
-    __version__ = "1.4.0"
+    __version__ = "2.0.0a"
 
     def __init__(self, bot: Red):
         self.bot = bot
@@ -26,20 +27,8 @@ class Application(commands.Cog):
             applicant_id=None,
             accepter_id=None,
             channel_id=None,
-            questions=[
-                ["What position are you applying for?", "Position", 120],
-                ["What is your name?", "Name", 120],
-                ["How old are you?", "Age", 120],
-                ["What timezone are you in? (Google is your friend.)", "Timezone", 120],
-                ["How many days per week can you be active?", "Active days/week", 120],
-                ["How many hours per day can you be active?", "Active hours/day", 120],
-                [
-                    "Do you have any previous experience? If so, please describe.",
-                    "Previous experience",
-                    120,
-                ],
-                ["Why do you want to be a member of our staff?", "Reason", 120],
-            ],
+            applications={},
+            message_id=None,
         )
 
     async def red_delete_data_for_user(self, *, requester, user_id):
@@ -56,6 +45,7 @@ class Application(commands.Cog):
     @checks.bot_has_permissions(manage_roles=True)
     async def apply(self, ctx: commands.Context):
         """Apply to be a staff member."""
+        # TODO delete
         if not await self.config.guild(ctx.guild).channel_id():
             return await ctx.send(
                 "Uh oh, the configuration is not correct. Ask the Admins to set it."
@@ -101,7 +91,7 @@ class Application(commands.Cog):
         embed = discord.Embed(
             color=await ctx.embed_colour(), timestamp=datetime.datetime.now()
         )
-        embed.set_author(name="New application!", icon_url=ctx.author.avatar_url)
+        embed.set_author(name="New application!", icon_url=ctx.author.avatar)
         embed.set_footer(
             text=f"{ctx.author.name}#{ctx.author.discriminator} ({ctx.author.id})"
         )
@@ -161,74 +151,100 @@ class Application(commands.Cog):
             "Your application has been sent to the Admins, thank you!"
         )
 
-    @checks.admin_or_permissions(administrator=True)
+    @commands.command()
+    async def sendappl(self, ctx):
+        # TODO rewrite
+        class MyModal(discord.ui.Modal, title="Staff application"):
+            position = discord.ui.TextInput(label="Position")
+            # name = discord.ui.TextInput(label="Name")
+            age = discord.ui.TextInput(label="Age")
+            timezone = discord.ui.TextInput(label="Timezone")
+            active_hours = discord.ui.TextInput(label="Active hours per day")
+            # active_days = discord.ui.TextInput(label="Active days per week")
+            experience = discord.ui.TextInput(label="Previous experience", style=discord.TextStyle.paragraph)
+            # reason = discord.ui.TextInput(label="Reason for applying", style=discord.TextStyle.paragraph)
+
+            async def on_submit(self, interaction):
+                author = interaction.user
+                await interaction.response.send_message(f"Thanks for applying, {author.name}!", ephemeral=True)
+                # await interaction.client.send_to_owners(content=f"User: {self.name}\nResponse: {self.answer}")
+                embed = discord.Embed(timestamp=datetime.datetime.now())
+                embed.title = "New application!"
+                embed.set_footer(
+                    text=f"{author.name}#{author.discriminator} ({author.id})",
+                    icon_url=author.avatar
+                )
+                embed.add_field(name="Position:", value=self.position)
+                # embed.add_field(name="Name", value=self.name)
+                embed.add_field(name="Age", value=self.age)
+                embed.add_field(name="Timezone", value=self.timezone)
+                embed.add_field(name="Active hours/day", value=self.active_hours)
+                # embed.add_field(name="Active days/week", value=self.active_days)
+                embed.add_field(name="Previous experience", value=self.experience, inline=False)
+                # embed.add_field(name="Reason", value=self.reason, inline=False)
+                await interaction.client.send_to_owners(embed=embed)
+
+        class MyView(discord.ui.View):
+            @discord.ui.button(label="Apply", style=discord.ButtonStyle.gray)
+            async def button_callback(self, interaction, button):
+                await interaction.response.send_modal(MyModal())
+
+        await ctx.send(content="Click that shit!", view=MyView())
+
+    # @checks.admin_or_permissions(administrator=True)
     @commands.group(autohelp=True, aliases=["setapply", "applicationset"])
     @commands.guild_only()
-    @checks.bot_has_permissions(manage_channels=True, manage_roles=True)
+    # @checks.bot_has_permissions(manage_channels=True, manage_roles=True)
     async def applyset(self, ctx: commands.Context):
         """Various Application settings."""
 
-    @applyset.command(name="questions")
-    async def applyset_questions(self, ctx: commands.Context):
-        """Set custom application questions."""
-        current_questions = "**Current questions:**"
-        for question in await self.config.guild(ctx.guild).questions():
-            try:
-                current_questions += "\n" + question[0]
-            except TypeError:
-                current_questions = (
-                    "Uh oh, couldn't fetch your questions.\n"
-                    + await self._default_questions_string()
-                )
-                break
-        await ctx.send(current_questions)
+    @applyset.group(autohelp=True, name="positions")
+    async def applyset_positions(self, ctx: commands.Context):
+        """Manage open positions."""
 
+    @applyset_positions.command(name="add")
+    async def applyset_positions_add(self, ctx: commands.Context, role: discord.Role):
+        """Add a new open position."""
         same_context = MessagePredicate.same_context(ctx)
-        valid_int = MessagePredicate.valid_int(ctx)
-
-        await ctx.send("How many questions?")
-        try:
-            number_of_questions = await self.bot.wait_for(
-                "message", timeout=60, check=valid_int
-            )
-        except asyncio.TimeoutError:
-            return await ctx.send("You took too long. Try again, please.")
+        valid_bool = MessagePredicate.yes_or_no(ctx)
 
         list_of_questions = []
-        for _ in range(int(number_of_questions.content)):
+        for _ in range(5):
             question_list = []
 
-            await ctx.send("Enter question: ")
-            try:
-                custom_question = await self.bot.wait_for(
-                    "message", timeout=60, check=same_context
-                )
-            except asyncio.TimeoutError:
-                return await ctx.send("You took too long. Try again, please.")
+            await ctx.send("Enter a question (keep it under 45 characters): ")
+            while True:
+                try:
+                    custom_question = await self.bot.wait_for(
+                        "message", timeout=60, check=same_context
+                    )
+                except asyncio.TimeoutError:
+                    return await ctx.send("You took too long. Try again, please.")
+                if len(custom_question.content) <= 45:
+                    break
             question_list.append(custom_question.content)
 
-            await ctx.send(
-                "Enter how the question will look in final embed (f.e. Name): "
-            )
+            await ctx.send("Do you expect a long answer? (yes/no)")
             try:
-                shortcut = await self.bot.wait_for(
-                    "message", timeout=60, check=same_context
-                )
+                await self.bot.wait_for("message", timeout=30, check=valid_bool)
             except asyncio.TimeoutError:
                 return await ctx.send("You took too long. Try again, please.")
-            question_list.append(shortcut.content)
-
-            await ctx.send("Enter how many seconds the applicant has to answer: ")
-            try:
-                time = await self.bot.wait_for("message", timeout=60, check=valid_int)
-            except asyncio.TimeoutError:
-                return await ctx.send("You took too long. Try again, please.")
-            question_list.append(int(valid_int.result))
+            question_list.append(valid_bool.result)
 
             list_of_questions.append(question_list)
 
-        await self.config.guild(ctx.guild).questions.set(list_of_questions)
-        await ctx.send("Done!")
+        await self.config.guild(ctx.guild).applications.set_raw(
+            role.id, value={"questions": list_of_questions}
+        )
+        await ctx.send("Done.")
+
+    @applyset_positions.command(name="remove", aliases=["del", "rem", "delete"])
+    async def applyset_positions_del(self, ctx: commands.Context, role: discord.Role):
+        applications = await self.config.guild(ctx.guild).applications()
+        if role.id not in applications:
+            return await ctx.send("I have no records of this position.")
+        await self.config.guild(ctx.guild).applications.clear_raw(role.id)
+        await ctx.send("Done.")
 
     @applyset.command(name="applicant")
     async def applyset_applicant(
@@ -280,18 +296,18 @@ class Application(commands.Cog):
         accepter = accepter.name if accepter else "None (guild admins)"
         applicant = ctx.guild.get_role(data["applicant_id"])
         applicant = applicant.name if applicant else "None"
-        questions = "".join(question[0] + "\n" for question in data["questions"])
+        positions = humanize_list([ctx.guild.get_role(int(role_id)).name for role_id in list(data["applications"])])
         embed = discord.Embed(
             colour=await ctx.embed_colour(), timestamp=datetime.datetime.now()
         )
-        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon_url)
+        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
         embed.set_footer(text="*required to function properly")
 
         embed.title = "**__Application settings:__**"
         embed.add_field(name="Channel*:", value=channel)
         embed.add_field(name="Accepter:", value=accepter)
         embed.add_field(name="Applicant:", value=applicant)
-        embed.add_field(name="Questions:", value=questions.strip())
+        embed.add_field(name="Positions:", value=positions)
         await ctx.send(embed=embed)
 
     @commands.command()
